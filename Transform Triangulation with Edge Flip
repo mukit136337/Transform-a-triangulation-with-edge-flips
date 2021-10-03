@@ -1,0 +1,269 @@
+import sage.graphs.genus
+
+---------------Triangulation Class---------------
+class Triangulation:
+    
+    #constructor
+    def __init__(self, cyclic_list, external_face):
+        self.vertices = set(range(len(cyclic_list)))
+        self.cyclic_list = cyclic_list
+        self.external_face = external_face
+        self.edges = self.edges_from_cyclic_list(cyclic_list)
+        
+        [faces, edge_to_face_map] = self.create_face(cyclic_list)
+        self.faces = faces
+        self.__edge_to_face_map = edge_to_face_map
+        
+        self.g = self.create_graph(cyclic_list, self.edges)
+        
+    
+    def edges_from_cyclic_list(self, cyclic_list):
+        edges = []
+        for i in range(len(cyclic_list)):
+            for j in range(len(cyclic_list[i])):
+                if i < cyclic_list[i][j]:
+                    edge = (i,cyclic_list[i][j])
+                    edges.append(edge)
+        return edges
+    
+    
+    def create_face(self, cyclic_list):
+        face = []
+        edge_to_face_map = {}
+        for i in range(len(cyclic_list)):
+            for j in range(len(cyclic_list[i])):
+                x = i
+                y = int(cyclic_list[i][j])
+                z = int(cyclic_list[i][(j+1)%len(cyclic_list[i])])
+                if x < y and x < z:
+                    if y > z:
+                        temp = y
+                        y = z
+                        z = temp
+                    face.append([x,y,z])
+                    if (x,y) in edge_to_face_map:
+                        edge_to_face_map[(x,y)].append([x,y,z])
+                    else :
+                        edge_to_face_map[(x,y)] = [[x,y,z]]
+                    
+                    if (x,z) in edge_to_face_map:
+                        edge_to_face_map[(x,z)].append([x,y,z])
+                    else :
+                        edge_to_face_map[(x,z)] = [[x,y,z]]
+                    
+                    if (y,z) in edge_to_face_map:
+                        edge_to_face_map[(y,z)].append([x,y,z])
+                    else :
+                        edge_to_face_map[(y,z)] = [[x,y,z]]
+                    
+        return face,edge_to_face_map
+    
+    def create_graph(self, cyclic_list, edges):
+        g = Graph(len(cyclic_list))
+        g.add_edges(edges)
+        self.pos = g.layout(layout="planar", set_embedding=True, external_face=self.external_face)
+        g.set_pos(self.pos)
+        return g
+    
+    def flip_edge(self, a, b):
+        if a > b:
+            temp = a
+            a = b
+            b = temp
+        if ((a,b) in self.__edge_to_face_map) == False:
+            print(str(a) + "," + str(b) + " this edge does not exist")
+            return
+        [f1, f2] = self.__edge_to_face_map[a,b]
+#         print(str(f1) + " " + str(f2))
+        
+        [a1,b1] = self.get_oposite_vertices(f1, f2, a, b)
+#         print(str(a1) + " " + str(b1))
+        if a1 > b1:
+            temp = a1
+            a1 = b1
+            b1 = temp
+        if (a1,b1) in self.__edge_to_face_map:
+            print("New edge " +str(a1) + "," + str(b1) + " already exist")
+            return
+        
+#         Remove of edge (a,b)
+        self.g.delete_edge(a,b)
+        self.edges.remove((a,b))
+        self.__edge_to_face_map.pop((a,b))
+        self.faces.remove(f1)
+        self.faces.remove(f2)
+        
+        #for new edge a1,b1
+        self.g.add_edge(a1,b1)
+        self.edges.append((a1,b1))
+        self.reform()
+        
+        [faces, edge_to_face_map] = self.create_face(self.cyclic_list)
+        self.faces = faces
+        self.__edge_to_face_map = edge_to_face_map
+        
+        return [a,b]
+        
+        
+    
+    
+    def get_oposite_vertices(self, f1, f2, a, b):
+        a1 = int(set(f1).difference({a,b}).pop())
+        b1 = int(set(f2).difference({a,b}).pop())
+        return [a1,b1]
+    
+    def reform(self):
+        self.pos = self.g.layout(layout="planar", set_embedding=True, external_face=self.external_face)
+        self.g.set_pos(self.pos)
+        self.g.genus()
+        self.cyclic_list = self.g.get_embedding()
+    
+    def get_edge_face_map(self, a, b):
+        return self.__edge_to_face_map[a,b]
+    
+    
+    def get_faces_of_edge(self, a, b):
+        if a > b:
+            temp = a
+            a = b
+            b = temp
+        if ((a, b) in self.__edge_to_face_map) == False:
+            print(str(a) + "," + str(b) + " this edge does not exist")
+            return
+        return self.__edge_to_face_map[a,b]
+    
+    def remove_face_of_edge(self, a, b, rface):
+        if a > b:
+            temp = a
+            a = b
+            b = temp
+        self.__edge_to_face_map[a,b].remove(rface)
+        return
+    
+    def add_face_of_edge(self, a, b, rface):
+        if a > b:
+            temp = a
+            a = b
+            b = temp
+        self.__edge_to_face_map[a,b].append(rface)
+        return
+        
+    
+
+
+
+
+
+
+
+
+---------------Wagner Class---------------
+class Wagner:
+    def __init__(self, t1, t2):
+        self.t1 = t1
+        self.t2 = t2
+    
+    def show_transformation(self):
+        dominant_vertices = list(self.t1.external_face)
+#         print("Dominant vertices of t1 :" + str(dominant_vertices))
+        [self.t1.g, flip_seq1] = self.make_dominant(self.t1, dominant_vertices[0], dominant_vertices[1])
+        [self.t1.g, flip_seq2] = self.make_dominant(self.t1, dominant_vertices[1], dominant_vertices[0])
+#         print(flip_seq1 + flip_seq2)
+#         self.t1.g.show()
+        
+#         dominant_vertex1_nbr = self.t2.g.neighbors(dominant_vertices[0])
+        [self.t2.g, flip_seq3] = self.make_dominant(self.t2, dominant_vertices[0], dominant_vertices[1])
+        [self.t2.g, flip_seq4] = self.make_dominant(self.t2, dominant_vertices[1], dominant_vertices[0])
+#         print(flip_seq3 + flip_seq4)
+#         self.t1.g.show()
+        reverse_flip_seq = flip_seq3 + flip_seq4
+        reverse_flip_seq.reverse()
+        
+        
+        flip_seq = flip_seq1 + flip_seq2 + reverse_flip_seq
+        print(flip_seq)
+        
+        
+        
+    
+    def make_dominant(self, t1, dominant_vertex1, dominant_vertex2):
+        
+#         finding the vertices which are needed to connect with dominant vertex 1
+        dominant_vertex1_nbr = set(t1.g.neighbors(dominant_vertex1))
+        connection_needed = list(t1.vertices.difference(dominant_vertex1_nbr))
+        connection_needed.remove(dominant_vertex1)
+#         print("Connection needed to make " + str(dominant_vertex1) + " dominant vertex are: " + str(connection_needed))
+        
+        
+#         making a domiant vertex
+        flip_seq = []
+        while len(connection_needed) != 0:
+            x = connection_needed.pop()
+            x_nbr = t1.g.get_embedding()[x]
+            dominant_vertex1_nbr_list = t1.g.get_embedding()[dominant_vertex1]
+            
+            
+            for i in range(len(x_nbr)):
+                u = x_nbr[i]
+                v = x_nbr[(i+1)%len(x_nbr)]
+                if u==dominant_vertex2 or v==dominant_vertex2:
+                    i = i
+                    continue
+                if u in dominant_vertex1_nbr_list and v in dominant_vertex1_nbr_list:
+                    [f1,f2] = t1.get_faces_of_edge(u,v)
+                    f3 = [dominant_vertex1, u, v]
+                    f3.sort()
+                    f4 = [x, u, v]
+                    f4.sort()
+                    
+                    if f3 in [f1,f2] and f4 in [f1,f2]:
+                        edge = t1.flip_edge(u,v)
+                        flip_seq.append(edge)
+                    else:
+                        
+                        edge = t1.flip_edge(u,v)
+                        flip_seq.append(edge)
+                        connection_needed.append(x)
+                    break
+        
+        return t1.g , flip_seq
+                    
+        
+        def isomorfic_map(self, t1, t2, dv):
+            mp  = {}
+            for i in range(len(t1.cyclic_list)):
+                i1 = t1.g.get_embedding()[i]
+                if len(i1) == 3:
+                    i1 = i
+                    break
+            for i in range(len(t2.cyclic_list)):
+                i2 = t1.g.get_embedding()[i]
+                if len(i2) == 3:
+                    i2 = i
+                    break
+            mp[i2] = i1
+            cnt = len(t1.cyclic_list) - 3
+            prev1 = i1
+            prev2 = i2
+            mp[dv[0]] = dv[0]
+            mp[dv[1]] = dv[1]
+            while cnt != 0:
+                ls1 = set(t1.g.get_embedding()[i1])
+                i11 = ls1.difference({dv[0],dv[1],prev1})
+                ls2 = set(t2.g.get_embedding()[i2])
+                i22 = ls2.difference({dv[0],dv[1],prev2})
+                prev1 = i1
+                prev2 = i2
+                i1 = i11.pop()
+                i2 = i22.pop()
+                #print("mapping " + str(i2) + "-->" + str(i1))
+                mp[i2] = i1
+                cnt = cnt - 1
+            return mp
+        
+       
+
+
+
+
+---------------Driver code---------------
